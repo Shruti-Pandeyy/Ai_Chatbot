@@ -1,6 +1,39 @@
 import streamlit as st
+from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+import PyPDF2
 
-st.set_page_config(page_title="PDF Chatbot", page_icon=":robot:")  
+def create_llm():
+    return HuggingFaceEndpoint(
+        repo_id="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        max_new_tokens=512, 
+        temperature=1.5,  
+        repetition_penalty=1.03,
+        task='text-generation',
+        return_full_text=True, 
+    )
+
+llm = create_llm()
+chat = ChatHuggingFace(llm=llm)
+prompt_template = """
+### [INST]
+
+
+{context}
+
+### QUESTION:
+{question}
+
+[/INST]
+"""
+prompt = PromptTemplate(
+   input_variables=["context", "question"],
+   template=prompt_template,
+)
+llm_chain = LLMChain(llm=llm, prompt=prompt)
+
+st.set_page_config(page_title="PDF Chatbot", page_icon=":robot:")
 
 style = """
 <style>
@@ -76,18 +109,25 @@ body {
 </style>
 """
 
-st.write(style, unsafe_allow_html=True) 
+st.write(style, unsafe_allow_html=True)
 
 st.title("PDF Chatbot")
 chat_history = []
 
 user_input = st.text_input("Type your message here...", key="user_input")
 uploaded_file = st.file_uploader("Upload a PDF file (optional)", type="pdf", key="pdf_file")
-
+pdf_text = ""
+if uploaded_file is not None:
+    pdf_reader = PyPDF2.PdfReader(uploaded_file)
+    for page_num in range(len(pdf_reader.pages)):
+        page = pdf_reader.pages[page_num]
+        pdf_text += page.extract_text()
 if user_input:
     chat_history.append({"user": user_input})
-    response = "**Work in progress:** Replace with your PDF processing logic here"
-    chat_history.append({"bot": response})
+    context = pdf_text if pdf_text else "No PDF provided."
+    response = llm_chain.invoke({"context": context, "question": user_input})
+    text_after_inst = response['text'].split('[/INST]')[-1].strip()
+    chat_history.append({"bot": text_after_inst})
 
 st.write("Chat History:")
 for message in chat_history:
